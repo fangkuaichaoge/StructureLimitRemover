@@ -1,18 +1,8 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
-#include <filesystem>
-#include <fstream>
-#include <mutex>
-#include <span>
-#include <string_view>
-#include <utility>
-#include <vector>
-
-#include <fmt/format.h>
 
 #include "pl/Gloss.h"
-#include "pl/Logger.hpp"
 #include "pl/Mod.hpp"
 #include "pl/memory/Patch.hpp"
 #include "pl/memory/Signature.hpp"
@@ -128,79 +118,11 @@ const PatchSite kPatchSites[] = {
      {0xBF, 0x9D, 0x0F, 0x71}},
 };
 
-/* ---------- file + logcat logging ---------- */
-
-static const char *kLogPath =
-    "/storage/emulated/0/Android/media/org.levimc.launcher/StructureLimitRemover.log";
-
-static std::ofstream g_logFile;
-static std::mutex g_logMutex;
-
-static void logToFile(const std::string &line) {
-    std::lock_guard<std::mutex> lock(g_logMutex);
-    if (g_logFile.is_open()) {
-        g_logFile << line << "\n";
-        g_logFile.flush();
-    }
-}
-
-template <typename... Args>
-static void logInfo(const char *fmtStr, Args &&...args) {
-    auto &logger = pl::log::Logger::getOrCreate("StructureLimitRemover");
-    logger.info(fmtStr, std::forward<Args>(args)...);
-    try {
-        logToFile(fmt::vformat(fmtStr, fmt::make_format_args(args...)));
-    } catch (...) {
-    }
-}
-
-template <typename... Args>
-static void logError(const char *fmtStr, Args &&...args) {
-    auto &logger = pl::log::Logger::getOrCreate("StructureLimitRemover");
-    logger.error(fmtStr, std::forward<Args>(args)...);
-    try {
-        logToFile("[ERROR] " +
-                  fmt::vformat(fmtStr, fmt::make_format_args(args...)));
-    } catch (...) {
-    }
-}
-
-static void openLogFile() {
-    std::error_code ec;
-    std::filesystem::create_directories(
-        "/storage/emulated/0/Android/media/org.levimc.launcher", ec);
-    g_logFile.open(kLogPath, std::ios::out | std::ios::app);
-    if (!g_logFile.is_open()) {
-        pl::mod::NativeMod *mod = pl::mod::NativeMod::current();
-        if (mod != nullptr) {
-            auto dir = mod->getDataDir();
-            std::filesystem::create_directories(dir, ec);
-            g_logFile.open(dir / "StructureLimitRemover.log",
-                           std::ios::out | std::ios::app);
-        }
-    }
-    logToFile("===== StructureLimitRemover session start =====");
-}
-
-static std::string toHex(const std::span<const uint8_t> bytes) {
-    static const char *kHex = "0123456789ABCDEF";
-    std::string out;
-    out.reserve(bytes.size() * 3);
-    for (const uint8_t b : bytes) {
-        if (!out.empty()) out += ' ';
-        out += kHex[b >> 4];
-        out += kHex[b & 0xF];
-    }
-    return out;
-}
-
 } // namespace
 
 class StructureLimitRemoverMod {
 public:
     bool load() {
-        openLogFile();
-        logInfo("StructureLimitRemover load() called");
         GlossInit(true);
         return patchStructureSizeSites();
     }
@@ -213,43 +135,29 @@ private:
             uintptr_t addr = pl::memory::resolveSignature(site.signature,
                                                           "libminecraftpe.so");
             if (addr == 0) {
-                logError("signature not found: {}", site.name);
                 allOk = false;
                 continue;
             }
 
             const uintptr_t patchAddr = addr + site.patchOffset;
             const auto current = pl::memory::readBytes(patchAddr, 4);
-            logInfo("site {}: signature resolved to {:#x}, patch target {:#x}, "
-                    "current bytes [{}]",
-                    site.name, addr, patchAddr, toHex(current));
             if (current.size() != 4) {
-                logError("readBytes failed: {}", site.name);
                 allOk = false;
                 continue;
             }
 
             if (std::memcmp(current.data(), site.patch.data(), 4) == 0) {
-                logInfo("already patched: {}", site.name);
                 continue;
             }
             if (std::memcmp(current.data(), site.original.data(), 4) != 0) {
-                logError("unexpected bytes at {:#x}: version mismatch ({})",
-                         patchAddr, site.name);
                 allOk = false;
                 continue;
             }
 
             if (!pl::memory::writeBytes(patchAddr, site.patch, site.name)) {
-                logError("writeBytes failed: {}", site.name);
                 allOk = false;
                 continue;
             }
-            logInfo("patched {} at {:#x}", site.name, patchAddr);
-        }
-
-        if (allOk) {
-            logInfo("all patches applied (structure size limit 64 -> 999)");
         }
         return allOk;
     }
