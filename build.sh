@@ -1,15 +1,4 @@
 #!/usr/bin/env bash
-# Build libStructureLimitRemover.so (arm64-v8a) for LeviLauncher.
-#
-# Usage:
-#   ANDROID_NDK_HOME=/path/to/ndk bash build.sh
-#
-# Environment variables:
-#   ANDROID_NDK_HOME / ANDROID_NDK_ROOT   NDK root (auto-detected from
-#                                         ANDROID_SDK_ROOT/ndk if unset)
-#   CMAKE                                  cmake executable (default: cmake)
-#   NINJA                                  ninja executable (default: ninja)
-#   JOBS                                   parallel jobs (default: nproc)
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
