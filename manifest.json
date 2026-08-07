@@ -1,0 +1,7 @@
+{
+  "type": "preload-native",
+  "name": "StructureLimitRemover",
+  "author": "fangkuaichaoge",
+  "version": "1.0.0",
+  "entry": "libStructureLimitRemover.so"
+}
